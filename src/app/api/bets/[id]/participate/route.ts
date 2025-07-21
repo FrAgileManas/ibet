@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { db } from '@/lib/db';
+import { prisma } from '@/lib/db';
+import { Decimal } from '@prisma/client/runtime/library';
+
+/**
+ * Converts Decimal to number safely
+ */
+function toNumber(value: number | Decimal | null): number {
+  if (value === null) return 0;
+  if (typeof value === 'number') return value;
+  return value.toNumber();
+}
 
 // POST - Create new bet participation
 export async function POST(
@@ -25,7 +35,7 @@ export async function POST(
     }
 
     // Use database transaction for consistency
-    const result = await db.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Check if bet exists and is active
       const bet = await tx.bets.findUnique({
         where: { id: betId },
@@ -70,7 +80,8 @@ export async function POST(
         throw new Error('User not found in database');
       }
 
-      if (dbUser.balance < amount) {
+      const userBalance = toNumber(dbUser.balance);
+      if (userBalance < amount) {
         throw new Error('Insufficient balance');
       }
 
@@ -84,13 +95,13 @@ export async function POST(
         }
       });
 
-      // Deduct amount from user balance
-      const balanceBefore = dbUser.balance;
+      // Deduct amount from user balance using atomic operation
+      const balanceBefore = userBalance;
       const balanceAfter = balanceBefore - amount;
 
       await tx.users.update({
         where: { id: user.id },
-        data: { balance: balanceAfter }
+        data: { balance: { decrement: amount } }
       });
 
       // Create payment history entry
@@ -106,11 +117,11 @@ export async function POST(
         }
       });
 
-      // Update bet total pool
+      // Update bet total pool using atomic operation
       await tx.bets.update({
         where: { id: betId },
         data: {
-          total_pool: bet.total_pool + amount
+          total_pool: { increment: amount }
         }
       });
 
@@ -154,7 +165,7 @@ export async function PUT(
     }
 
     // Use database transaction for consistency
-    const result = await db.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Check if bet exists and is active
       const bet = await tx.bets.findUnique({
         where: { id: betId }
@@ -199,12 +210,12 @@ export async function PUT(
       }
 
       // Calculate balance changes
-      const oldAmount = existingParticipation.amount;
+      const oldAmount = toNumber(existingParticipation.amount);
       const amountDifference = amount - oldAmount;
-      const balanceBefore = dbUser.balance;
+      const balanceBefore = toNumber(dbUser.balance);
 
       // Check if user has sufficient balance for increased amount
-      if (amountDifference > 0 && dbUser.balance < amountDifference) {
+      if (amountDifference > 0 && balanceBefore < amountDifference) {
         throw new Error('Insufficient balance for increased participation amount');
       }
 
@@ -225,11 +236,18 @@ export async function PUT(
         }
       });
 
-      // Update user balance
-      await tx.users.update({
-        where: { id: user.id },
-        data: { balance: balanceAfter }
-      });
+      // Update user balance using atomic operations
+      if (amountDifference > 0) {
+        await tx.users.update({
+          where: { id: user.id },
+          data: { balance: { decrement: amountDifference } }
+        });
+      } else if (amountDifference < 0) {
+        await tx.users.update({
+          where: { id: user.id },
+          data: { balance: { increment: Math.abs(amountDifference) } }
+        });
+      }
 
       // Create payment history entry for the difference
       if (amountDifference !== 0) {
@@ -246,13 +264,22 @@ export async function PUT(
         });
       }
 
-      // Update bet total pool
-      await tx.bets.update({
-        where: { id: betId },
-        data: {
-          total_pool: bet.total_pool + amountDifference
-        }
-      });
+      // Update bet total pool using atomic operations
+      if (amountDifference > 0) {
+        await tx.bets.update({
+          where: { id: betId },
+          data: {
+            total_pool: { increment: amountDifference }
+          }
+        });
+      } else if (amountDifference < 0) {
+        await tx.bets.update({
+          where: { id: betId },
+          data: {
+            total_pool: { decrement: Math.abs(amountDifference) }
+          }
+        });
+      }
 
       return updatedParticipation;
     });

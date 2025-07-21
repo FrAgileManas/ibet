@@ -1,8 +1,18 @@
 import { prisma } from '@/lib/db';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface BalanceTransaction {
   balanceBefore: number;
   balanceAfter: number;
+}
+
+/**
+ * Converts Decimal to number safely
+ */
+function toNumber(value: number | Decimal | null): number {
+  if (value === null) return 0;
+  if (typeof value === 'number') return value;
+  return value.toNumber();
 }
 
 /**
@@ -24,7 +34,7 @@ export async function validateAndUpdateBalance(
     throw new Error('User not found');
   }
   
-  const currentBalance = user.balance ?? 0; // Handle null balance
+  const currentBalance = toNumber(user.balance);
   
   if (type === 'debit' && currentBalance < amount) {
     throw new Error('Insufficient balance');
@@ -162,7 +172,7 @@ export async function validateBetParticipation(
       };
     }
 
-    const userBalance = user.balance ?? 0; // Handle null balance
+    const userBalance = toNumber(user.balance);
     
     if (userBalance < amount) {
       return {
