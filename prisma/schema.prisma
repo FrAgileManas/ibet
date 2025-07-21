@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model users {
+  id                 String               @id @db.VarChar(255)
+  email              String               @unique @db.VarChar(255)
+  name               String               @db.VarChar(255)
+  balance            Decimal?             @default(0.00) @db.Decimal(10, 2)
+  is_admin           Boolean?             @default(false)
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  bet_participations bet_participations[]
+  bets               bets[]
+  payment_history    payment_history[]
+}
+
+model bets {
+  id                 Int                  @id @default(autoincrement())
+  title              String               @db.VarChar(255)
+  description        String?
+  options            Json
+  status             String?              @default("active") @db.VarChar(20)
+  commission_rate    Decimal?             @default(1.00) @db.Decimal(5, 2)
+  total_pool         Decimal?             @default(0.00) @db.Decimal(10, 2)
+  commission_amount  Decimal?             @default(0.00) @db.Decimal(10, 2)
+  prize_pool         Decimal?             @default(0.00) @db.Decimal(10, 2)
+  winning_option_id  Int?
+  created_by         String?              @db.VarChar(255)
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  completed_at       DateTime?            @db.Timestamptz(6)
+  bet_participations bet_participations[]
+  creator            users?               @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_bets_created_at")
+  @@index([status], map: "idx_bets_status")
+}
+
+model bet_participations {
+  id         Int       @id @default(autoincrement())
+  bet_id     Int?
+  user_id    String?   @db.VarChar(255)
+  option_id  Int
+  amount     Decimal   @db.Decimal(10, 2)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+  bet        bets?     @relation(fields: [bet_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([bet_id, user_id])
+  @@index([bet_id], map: "idx_bet_participations_bet_id")
+  @@index([user_id], map: "idx_bet_participations_user_id")
+}
+
+model payment_history {
+  id             Int       @id @default(autoincrement())
+  user_id        String?   @db.VarChar(255)
+  type           String    @db.VarChar(50)
+  amount         Decimal   @db.Decimal(10, 2)
+  description    String
+  reference_id   Int?
+  balance_before Decimal   @db.Decimal(10, 2)
+  balance_after  Decimal   @db.Decimal(10, 2)
+  created_by     String?   @db.VarChar(255)
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  user           users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_payment_history_created_at")
+  @@index([user_id], map: "idx_payment_history_user_id")
+}
