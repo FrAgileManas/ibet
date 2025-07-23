@@ -16,6 +16,7 @@ export default function BetsPage() {
   const { user } = useUser();
   const { bets, loading: betsLoading, error: betsError, refreshBets } = useBets();
   const { balance, loading: balanceLoading, refreshBalance } = useUserBalance();
+  const [activeTab, setActiveTab] = useState('active');
 
   const handleParticipationChange = () => {
     // Refresh both bets and balance when participation changes
@@ -36,6 +37,10 @@ export default function BetsPage() {
   const handleRefresh = () => {
     refreshBets();
     refreshBalance();
+  };
+
+  const handleBrowseActiveBets = () => {
+    setActiveTab('active');
   };
 
   if (!user) {
@@ -93,7 +98,7 @@ export default function BetsPage() {
       )}
 
       {/* Tabs for different bet categories */}
-      <Tabs defaultValue="active" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="active" className="relative">
             Active Bets
@@ -248,12 +253,11 @@ export default function BetsPage() {
               <CardContent className="text-center py-8">
                 <p className="text-gray-500">You haven't placed any bets yet.</p>
                 <Button 
-  className="mt-4"
-  onClick={() => (document.querySelector('[value="active"]') as HTMLElement)?.click()}
->
-  Browse Active Bets
-</Button>
-
+                  className="mt-4"
+                  onClick={handleBrowseActiveBets}
+                >
+                  Browse Active Bets
+                </Button>
               </CardContent>
             </Card>
           ) : (

@@ -185,7 +185,7 @@ export default function BetParticipationModal({
               <div>
                 <Label className="text-sm font-medium">Select Option</Label>
                 <RadioGroup
-  value={selectedOptionId?.toString()}
+  value={selectedOptionId?.toString()||""}
   onValueChange={(value: string) => setSelectedOptionId(parseInt(value))}
   className="mt-2"
 >
@@ -215,7 +215,7 @@ export default function BetParticipationModal({
                 <Input
   type="number"
   value={amount}
-  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAmount(e.target.value)}
+  onChange={(e) => setAmount(e.target.value)}
   min="10"
   step="10"
   className="mt-1"

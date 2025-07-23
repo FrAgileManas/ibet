@@ -1,6 +1,5 @@
-// src/lib/types.ts
+// lib/types.ts - Updated with pool calculation types
 
-// User types
 export interface User {
   id: string;
   email: string;
@@ -11,7 +10,6 @@ export interface User {
   updatedAt: Date;
 }
 
-// Bet types
 export interface BetOption {
   id: number;
   text: string;
@@ -20,18 +18,18 @@ export interface BetOption {
 export interface Bet {
   id: number;
   title: string;
-  description: string | null;
+  description: string;
   options: BetOption[];
   status: 'active' | 'locked' | 'completed';
   commissionRate: number;
   totalPool: number;
   commissionAmount: number;
   prizePool: number;
-  winningOptionId?: number | null;
+  winningOptionId?: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
-  completedAt?: Date | null;
+  completedAt?: Date;
   participations?: BetParticipation[];
 }
 
@@ -46,16 +44,74 @@ export interface BetParticipation {
   user?: User;
 }
 
-// Payment history
 export interface PaymentHistory {
   id: number;
   userId: string;
   type: 'credit' | 'debit' | 'bet_win' | 'bet_loss' | 'admin_adjustment';
   amount: number;
   description: string;
-  referenceId?: number | null;
+  referenceId?: number;
   balanceBefore: number;
   balanceAfter: number;
-  createdBy?: string | null;
+  createdBy?: string;
   createdAt: Date;
+}
+
+// Pool calculation types
+export interface PoolCalculation {
+  totalPool: number;
+  commissionAmount: number;
+  prizePool: number;
+  optionBreakdown: OptionBreakdown[];
+}
+
+export interface OptionBreakdown {
+  optionId: number;
+  totalAmount: number;
+  participantCount: number;
+  potentialPrizeRatio: number;
+}
+
+export interface PrizeDistribution {
+  userId: string;
+  amount: number;
+  winRatio: number;
+  originalBet: number;
+}
+
+export interface PoolStats {
+  totalPool: number;
+  prizePool: number;
+  commission: number;
+  commissionRate: number;
+  optionStats: OptionStat[];
+}
+
+export interface OptionStat {
+  optionId: number;
+  totalAmount: number;
+  participantCount: number;
+  potentialMultiplier: string;
+}
+
+// API Response types
+export interface BetCompletionResponse {
+  message: string;
+  betId: number;
+  winningOptionId: number;
+  winningOptionText: string;
+  totalPool: number;
+  winnersCount: number;
+  distributedAmount: number;
+}
+
+export interface CommissionUpdateResponse {
+  message: string;
+  betId: number;
+  newCommissionRate: number;
+}
+
+// Error types
+export interface ApiError {
+  error: string;
 }
