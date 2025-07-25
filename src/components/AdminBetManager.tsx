@@ -1,6 +1,21 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { PlusCircle, Trash2, Loader2, Lock, Unlock, CheckCircle, AlertCircle } from 'lucide-react';
+
+// A simple Textarea component if you don't have one in ui/textarea.tsx
+const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+  <textarea
+    className="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+    {...props}
+  />
+);
+
 
 // Types
 type Option = {
@@ -38,67 +53,60 @@ const AdminBetManager = () => {
   const [existingBets, setExistingBets] = useState<Bet[]>([]);
   const [loadingBets, setLoadingBets] = useState(true);
   
-  // UI state
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  // UI state for the creation form
+  const [isCreating, setIsCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
-  // Fetch existing bets on component mount
+  // --- NEW: UI state for the management table ---
+  const [tableError, setTableError] = useState<string | null>(null);
+  const [tableSuccess, setTableSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     fetchBets();
   }, []);
 
   const fetchBets = async () => {
-  try {
-    const response = await fetch('/api/bets');
-    if (response.ok) {
-      const data = await response.json();
-      // Ensure data is an array before setting state
-      const bets = Array.isArray(data) ? data : [];
-      setExistingBets(bets);
-    } else {
-      // If response is not ok, set empty array
-      console.error('Failed to fetch bets:', response.statusText);
-      setExistingBets([]);
+    try {
+      setLoadingBets(true);
+      const response = await fetch('/api/bets');
+      if (response.ok) {
+        const data = await response.json();
+        setExistingBets(data.bets || []);
+      } else {
+        setTableError('Failed to fetch bets.');
+      }
+    } catch (err) {
+      setTableError('An error occurred while fetching bets.');
+    } finally {
+      setLoadingBets(false);
     }
-  } catch (err) {
-    console.error('Failed to fetch bets:', err);
-    // Always ensure existingBets is an array
-    setExistingBets([]);
-  } finally {
-    setLoadingBets(false);
-  }
-};
+  };
 
-
-  // --- Option Handlers ---
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options];
     newOptions[index].text = value;
     setOptions(newOptions);
   };
 
-  const addOption = () => {
-    setOptions([...options, { text: '' }]);
-  };
+  const addOption = () => setOptions([...options, { text: '' }]);
 
   const removeOption = (index: number) => {
-    if (options.length <= 2) return;
-    const newOptions = options.filter((_, i) => i !== index);
-    setOptions(newOptions);
+    if (options.length > 2) {
+      setOptions(options.filter((_, i) => i !== index));
+    }
   };
 
-  // --- Form Submission ---
   const handleSubmit = async () => {
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    setIsCreating(true);
+    setFormError(null);
+    setFormSuccess(null);
 
     const validOptions = options.filter(opt => opt.text.trim() !== '');
 
     if (!title.trim() || validOptions.length < 2) {
-      setError('Title and at least two valid options are required.');
-      setIsLoading(false);
+      setFormError('Title and at least two valid options are required.');
+      setIsCreating(false);
       return;
     }
 
@@ -114,258 +122,191 @@ const AdminBetManager = () => {
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Error: ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error('Failed to create bet.');
 
-      setSuccess('Bet created successfully!');
+      setFormSuccess('Bet created successfully!');
       setTitle('');
       setDescription('');
       setCommissionRate(1.0);
       setOptions([{ text: '' }, { text: '' }]);
-      
-      // Refresh the bets list
-      fetchBets();
+      fetchBets(); // Refresh the bets list
     } catch (err: any) {
-      setError(err.message);
+      setFormError(err.message);
     } finally {
-      setIsLoading(false);
+      setIsCreating(false);
     }
   };
 
-  // --- Status Update Handler ---
-  const updateBetStatus = async (betId: number, newStatus: string, newCommissionRate?: number) => {
-    try {
-      const body: any = { status: newStatus };
-      if (newCommissionRate !== undefined) {
-        body.commissionRate = newCommissionRate;
-      }
+  const updateBetStatus = async (betId: number, newStatus: string) => {
+    setTableError(null);
+    setTableSuccess(null);
 
+    try {
       const response = await fetch(`/api/bets/${betId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-
-      setSuccess(`Bet status updated to ${newStatus}`);
+      if (!response.ok) throw new Error('Failed to update bet status.');
+      
+      setTableSuccess(`Bet status updated to ${newStatus}.`);
       fetchBets(); // Refresh the list
     } catch (err: any) {
-      setError(`Failed to update bet: ${err.message}`);
+      setTableError(err.message);
     }
   };
-
-  // --- Status Badge Component ---
+  
   const StatusBadge = ({ status }: { status: string }) => {
-    const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full";
     const statusClasses = {
-      active: "bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100",
-      locked: "bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100",
-      completed: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100"
+      active: "bg-green-100 text-green-800",
+      locked: "bg-yellow-100 text-yellow-800",
+      completed: "bg-gray-100 text-gray-800"
     };
-    
     return (
-      <span className={`${baseClasses} ${statusClasses[status as keyof typeof statusClasses]}`}>
+      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[status as keyof typeof statusClasses]}`}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
   };
 
   return (
-    <div className="space-y-8">
-      {/* Create New Bet Form */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-6 text-gray-900 dark:text-white">Create New Bet</h2>
-        <div className="space-y-4">
-          {/* Title Input */}
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Title
-            </label>
-            <input
-              type="text"
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter bet title"
-              required
-            />
-          </div>
-
-          {/* Description Input */}
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Description (Optional)
-            </label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter bet description"
-            />
-          </div>
-
-          {/* Commission Rate Input */}
-          <div>
-            <label htmlFor="commissionRate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Commission Rate (%)
-            </label>
-            <input
-              type="number"
-              id="commissionRate"
-              value={commissionRate}
-              onChange={(e) => setCommissionRate(parseFloat(e.target.value))}
-              step="0.01"
-              min="0"
-              max="100"
-              className="w-full md:w-48 p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              required
-            />
-          </div>
-          
-          {/* Dynamic Options */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-3">Betting Options</h3>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* --- Column 1: Create Bet Form --- */}
+      <div className="lg:col-span-1">
+        <Card>
+          <CardHeader>
+            <CardTitle>Create New Bet</CardTitle>
+            <CardDescription>Fill out the details to launch a new bet.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
+              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Who will win the match?" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description (Optional)</Label>
+              <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add more context here..." />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="commissionRate">Commission Rate (%)</Label>
+              <Input id="commissionRate" type="number" value={commissionRate} onChange={(e) => setCommissionRate(parseFloat(e.target.value))} step="0.1" min="0" max="100" />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Betting Options</Label>
               {options.map((option, index) => (
-                <div key={index} className="flex items-center gap-3">
-                  <input
-                    type="text"
+                <div key={index} className="flex items-center gap-2">
+                  <Input
                     placeholder={`Option ${index + 1}`}
                     value={option.text}
                     onChange={(e) => handleOptionChange(index, e.target.value)}
-                    className="flex-grow p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {options.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOption(index)}
-                      className="px-4 py-3 bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700 text-red-700 dark:text-red-100 rounded-lg font-medium transition-colors"
-                    >
-                      Remove
-                    </button>
+                    <Button variant="ghost" size="icon" onClick={() => removeOption(index)}>
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
                   )}
                 </div>
               ))}
+              <Button variant="outline" size="sm" onClick={addOption} className="mt-2">
+                <PlusCircle className="w-4 h-4 mr-2" />
+                Add Option
+              </Button>
             </div>
-            <button
-              type="button"
-              onClick={addOption}
-              className="mt-3 px-4 py-2 bg-blue-100 hover:bg-blue-200 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-100 rounded-lg font-medium transition-colors"
-            >
-              + Add Option
-            </button>
-          </div>
 
-          {/* Feedback Messages */}
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="p-3 bg-green-100 border border-green-300 text-green-700 rounded-lg">
-              {success}
-            </div>
-          )}
+            {formError && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-600">{formError}</AlertDescription>
+              </Alert>
+            )}
+            {formSuccess && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-600">{formSuccess}</AlertDescription>
+              </Alert>
+            )}
 
-          {/* Submit Button */}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-lg transition-colors disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Creating Bet...' : 'Create Bet'}
-          </button>
-        </div>
+            <Button onClick={handleSubmit} disabled={isCreating} className="w-full">
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Bet
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Existing Bets Management */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-6 text-gray-900 dark:text-white">Manage Existing Bets</h2>
-        
-        {loadingBets ? (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="mt-2 text-gray-600 dark:text-gray-400">Loading bets...</p>
-          </div>
-        ) : existingBets.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">No bets created yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300 dark:border-gray-600 rounded-lg">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700">
-                  <th className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Title</th>
-                  <th className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Status</th>
-                  <th className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Pool</th>
-                  <th className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Commission</th>
-                  <th className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-white">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {existingBets.map((bet) => (
-                  <tr key={bet.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="border border-gray-300 dark:border-gray-600 px-4 py-3">
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">{bet.title}</div>
-                        {bet.description && (
-                          <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{bet.description}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="border border-gray-300 dark:border-gray-600 px-4 py-3">
-                      <StatusBadge status={bet.status} />
-                    </td>
-                    <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
-                      ₹{bet.total_pool.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 dark:border-gray-600 px-4 py-3 text-gray-900 dark:text-white">
-                      {bet.commission_rate}%
-                    </td>
-                    <td className="border border-gray-300 dark:border-gray-600 px-4 py-3">
-                      <div className="flex gap-2 flex-wrap">
-                        {bet.status === 'active' && (
-                          <button
-                            onClick={() => updateBetStatus(bet.id, 'locked')}
-                            className="px-3 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-xs font-medium rounded transition-colors"
-                          >
-                            Lock
-                          </button>
-                        )}
-                        {bet.status === 'locked' && (
-                          <>
-                            <button
-                              onClick={() => updateBetStatus(bet.id, 'active')}
-                              className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-800 text-xs font-medium rounded transition-colors"
-                            >
-                              Reopen
-                            </button>
-                            <button
-                              onClick={() => updateBetStatus(bet.id, 'completed')}
-                              className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded transition-colors"
-                            >
-                              Complete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* --- Column 2: Manage Existing Bets --- */}
+      <div className="lg:col-span-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Manage Existing Bets</CardTitle>
+            <CardDescription>View, lock, or complete active bets.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {tableError && (
+              <Alert className="border-red-200 bg-red-50 mb-4">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-600">{tableError}</AlertDescription>
+              </Alert>
+            )}
+            {tableSuccess && (
+              <Alert className="border-green-200 bg-green-50 mb-4">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-600">{tableSuccess}</AlertDescription>
+              </Alert>
+            )}
+
+            {loadingBets ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              </div>
+            ) : existingBets.length === 0 ? (
+              <p className="text-center py-12 text-gray-500">No bets have been created yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left font-medium p-3">Title</th>
+                      <th className="text-left font-medium p-3">Status</th>
+                      <th className="text-left font-medium p-3">Pool</th>
+                      <th className="text-left font-medium p-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {existingBets.map((bet) => (
+                      <tr key={bet.id} className="border-b hover:bg-gray-50">
+                        <td className="p-3 font-medium">{bet.title}</td>
+                        <td className="p-3"><StatusBadge status={bet.status} /></td>
+                        <td className="p-3">₹{Number(bet.total_pool).toFixed(2)}</td>
+                        <td className="p-3">
+                          <div className="flex gap-2">
+                            {bet.status === 'active' && (
+                              <Button size="sm" variant="outline" onClick={() => updateBetStatus(bet.id, 'locked')}>
+                                <Lock className="w-3 h-3 mr-1" /> Lock
+                              </Button>
+                            )}
+                            {bet.status === 'locked' && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => updateBetStatus(bet.id, 'active')}>
+                                  <Unlock className="w-3 h-3 mr-1" /> Reopen
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => updateBetStatus(bet.id, 'completed')}>
+                                  <CheckCircle className="w-3 h-3 mr-1" /> Complete
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
