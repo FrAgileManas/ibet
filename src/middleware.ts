@@ -1,7 +1,7 @@
 // middleware.ts
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { getUserRole } from "@/lib/auth";
+
 
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
@@ -23,8 +23,7 @@ const isPublicRoute = createRouteMatcher([
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
-  const { pathname } = req.nextUrl;
-
+  
   if (isPublicRoute(req)) {
     return NextResponse.next();
   }
@@ -36,9 +35,22 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   if (userId && isAdminRoute(req)) {
-    const userRole = await getUserRole(userId);
-    
-    if (userRole !== 'admin') {
+    try {
+      // Use Clerk's clerkClient to get user data (edge-compatible)
+      const { clerkClient } = await import('@clerk/nextjs/server');
+      const user = await (await clerkClient()).users.getUser(userId);
+      
+      const isAdmin = user.publicMetadata?.role === 'admin' || 
+                     user.privateMetadata?.role === 'admin' ||
+                     user.unsafeMetadata?.role === 'admin';
+      
+      console.log('Admin check from Clerk user metadata:', isAdmin, 'for user:', userId);
+      
+      if (!isAdmin) {
+        return NextResponse.redirect(new URL("/not-authorized", req.url));
+      }
+    } catch (error) {
+      console.error('Error checking admin status:', error);
       return NextResponse.redirect(new URL("/not-authorized", req.url));
     }
   }
